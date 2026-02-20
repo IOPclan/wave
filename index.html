@@ -1,124 +1,280 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Crystal Clear Mic Monitor</title>
-
-<style>
-  body {
-    margin: 0;
-    height: 100vh;
-    background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: system-ui, sans-serif;
-    color: white;
-  }
-
-  .card {
-    background: rgba(0,0,0,0.35);
-    backdrop-filter: blur(12px);
-    padding: 32px 40px;
-    border-radius: 18px;
-    width: 340px;
-    text-align: center;
-    box-shadow: 0 12px 40px rgba(0,0,0,0.45);
-  }
-
-  h1 {
-    margin: 0 0 8px;
-    font-size: 1.6em;
-  }
-
-  p {
-    margin: 0 0 20px;
-    font-size: 0.9em;
-    opacity: 0.85;
-  }
-
-  button {
-    width: 100%;
-    padding: 14px;
-    font-size: 1em;
-    border: none;
-    border-radius: 12px;
-    cursor: pointer;
-    color: white;
-    background: linear-gradient(135deg, #00c6ff, #0072ff);
-  }
-
-  button:hover {
-    opacity: 0.9;
-  }
-
-  label {
-    display: block;
-    margin-top: 22px;
-    margin-bottom: 6px;
-    font-size: 0.9em;
-  }
-
-  input[type="range"] {
-    width: 100%;
-  }
-
-  .status {
-    margin-top: 14px;
-    font-size: 0.85em;
-    opacity: 0.8;
-  }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Flappy Wave Game - Difficulty Levels</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #000;
+      font-family: sans-serif;
+      color: white;
+      height: 100%;
+    }
+    canvas {
+      display: block;
+      background-color: #111;
+    }
+    #startScreen {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: #111;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 20px;
+      z-index: 10;
+      padding: 20px;
+    }
+    .startButton {
+      padding: 20px 40px;
+      font-size: 24px;
+      cursor: pointer;
+      border: none;
+      border-radius: 10px;
+      background-color: #00aaff;
+      color: white;
+      transition: background-color 0.3s;
+      min-width: 120px;
+      text-align: center;
+      user-select: none;
+    }
+    .startButton:hover {
+      background-color: #0077cc;
+    }
+  </style>
 </head>
-
 <body>
 
-<div class="card">
-  <h1>🎧 Mic Monitor</h1>
-  <p>Raw, low-latency mic playback</p>
+<div id="startScreen">
+  <button class="startButton" id="easyButton">Easy</button>
+  <button class="startButton" id="normalButton">Normal</button>
+  <button class="startButton" id="hardButton">Hard</button>
+  <button class="startButton" id="harderButton">Harder</button>
+  <button class="startButton" id="insaneButton">Insane</button>
 
-  <button onclick="startMic()">Start Monitoring</button>
-
-  <label>Feedback Volume</label>
-  <input id="volume" type="range" min="0" max="1.2" step="0.01" value="0.8">
-
-  <div class="status" id="status">Mic inactive</div>
+  <!-- Toggle Triangle Button -->
+  <button class="startButton" id="toggleTriangleButton" style="position:absolute; top:20px; right:20px; font-size:16px; min-width:140px;">
+    Hide Triangle
+  </button>
 </div>
 
+<canvas id="gameCanvas"></canvas>
+
 <script>
-let audioCtx;
-let gainNode;
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const startScreen = document.getElementById("startScreen");
 
-async function startMic() {
-  if (audioCtx) return;
+const easyButton = document.getElementById("easyButton");
+const normalButton = document.getElementById("normalButton");
+const hardButton = document.getElementById("hardButton");
+const harderButton = document.getElementById("harderButton");
+const insaneButton = document.getElementById("insaneButton");
+const toggleTriangleButton = document.getElementById("toggleTriangleButton");
 
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      echoCancellation: false,
-      noiseSuppression: false,
-      autoGainControl: false,
-      channelCount: 1,
-      sampleRate: 48000
-    }
-  });
+// ✅ Controls whether the triangle is drawn (persistent)
+let showTriangle = true;
 
-  audioCtx = new AudioContext({ sampleRate: 48000 });
+// Toggle handler
+toggleTriangleButton.addEventListener("click", () => {
+  showTriangle = !showTriangle;
+  toggleTriangleButton.textContent = showTriangle ? "Hide Triangle" : "CTRL+R To Show Triangle";
+});
 
-  const micSource = audioCtx.createMediaStreamSource(stream);
-  gainNode = audioCtx.createGain();
-  gainNode.gain.value = 0.8;
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
 
-  micSource.connect(gainNode);
-  gainNode.connect(audioCtx.destination);
+let keysPressed = {};
+window.addEventListener('keydown', (e) => { keysPressed[e.code] = true; });
+window.addEventListener('keyup', (e) => { keysPressed[e.code] = false; });
 
-  document.getElementById("status").textContent =
-    "Monitoring active • 48kHz • Raw mic";
+let square, pillars, gameOver, score, trail, scoreInterval, pillarInterval, animationId;
+let currentSpeed = 10;
+
+const pillarWidth = 60;
+const gapHeight = 180;
+
+const baseWaveWidth = 48;
+const waveWidth = baseWaveWidth * 1.2;
+const waveHeight = waveWidth * Math.sqrt(3)/2;
+
+const trailSize = 6*2.5;
+
+const angleUp = -Math.PI/4;
+const angleDown = Math.PI/4;
+
+let currentAngle = angleDown;
+let targetAngle = angleDown;
+const rotationSpeed = 0.15;
+
+// Only visual triangle offset
+const waveXOffset = 10;
+
+function generatePillar() {
+  const minGapY = 100;
+  const maxGapY = canvas.height - gapHeight - 100;
+  const gapY = Math.floor(Math.random() * (maxGapY - minGapY)) + minGapY;
+  pillars.push({ x: canvas.width, gapY: gapY });
 }
 
-document.getElementById("volume").addEventListener("input", e => {
-  if (gainNode) gainNode.gain.value = e.target.value;
-});
-</script>
+function getTrianglePoints(x, y, width, height, angle) {
+  const cx = x - width / 2;
+  const cy = y + height / 2;
+  const points = [
+    { x: width / 2, y: 0 },
+    { x: -width / 2, y: -height / 2 },
+    { x: -width / 2, y: height / 2 },
+  ];
+  return points.map(p => {
+    const rx = p.x * Math.cos(angle) - p.y * Math.sin(angle);
+    const ry = p.x * Math.sin(angle) + p.y * Math.cos(angle);
+    return { x: cx + rx, y: cy + ry };
+  });
+}
 
+function pointInRect(px, py, rx, ry, rw, rh) {
+  return px >= rx && px <= rx + rw && py >= ry && py <= ry + rh;
+}
+
+function checkCollision(player, pillar) {
+  const triPoints = getTrianglePoints(player.x, player.y, waveWidth, waveHeight, currentAngle);
+  for (const pt of triPoints) {
+    if (pointInRect(pt.x, pt.y, pillar.x, 0, pillarWidth, pillar.gapY)) return true;
+    if (pointInRect(pt.x, pt.y, pillar.x, pillar.gapY + gapHeight, pillarWidth, canvas.height - pillar.gapY - gapHeight)) return true;
+  }
+  return false;
+}
+
+function drawWave(x, y, width, height, angle) {
+  ctx.save();
+  ctx.translate(x - width / 2, y + height / 2);
+  ctx.rotate(angle);
+  ctx.fillStyle = "white";
+  ctx.beginPath();
+  ctx.moveTo(width / 2, 0);
+  ctx.lineTo(-width / 2, -height / 2);
+  ctx.lineTo(-width / 2, height / 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawPillar(x, gapY) {
+  ctx.fillStyle = "green";
+  ctx.fillRect(x, 0, pillarWidth, gapY);
+  ctx.fillRect(x, gapY + gapHeight, pillarWidth, canvas.height - gapY - gapHeight);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (trail.length > 1) {
+    ctx.strokeStyle = "#ff4444";
+    ctx.lineWidth = trailSize;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(trail[0].x, trail[0].y + trailSize/2);
+    for (let i=1; i<trail.length; i++) {
+      ctx.lineTo(trail[i].x, trail[i].y + trailSize/2);
+    }
+    ctx.stroke();
+  }
+
+  // ✅ Only draw triangle if showTriangle is true
+  if (showTriangle) {
+    drawWave(square.x + waveXOffset, square.y, waveWidth, waveHeight, currentAngle);
+  }
+
+  for (const p of pillars) drawPillar(p.x, p.gapY);
+
+  // Top-right score
+  ctx.fillStyle = "white";
+  ctx.font = "24px sans-serif";
+  ctx.fillText("Score: " + score, 20, 40);
+
+  // Bottom-left text
+  ctx.font = "12px sans-serif";
+  ctx.fillText("CTRL+R FOR MENU", 20, canvas.height-20);
+
+  if (gameOver) {
+    ctx.font = "48px sans-serif";
+    ctx.fillText("Game Over", canvas.width/2 - 120, canvas.height/2);
+  }
+}
+
+function update() {
+  if (gameOver) return;
+  const moveUp = keysPressed["Space"] || keysPressed["ArrowUp"];
+  targetAngle = moveUp ? angleUp : angleDown;
+  currentAngle += (targetAngle - currentAngle) * rotationSpeed;
+
+  square.y += moveUp ? -currentSpeed : currentSpeed;
+  if (square.y < 0) square.y = 0;
+  if (square.y + waveHeight > canvas.height) square.y = canvas.height - waveHeight;
+
+  trail.push({ x: square.x, y: square.y + waveHeight / 2 - trailSize / 2 });
+  for (let t of trail) t.x -= currentSpeed;
+  trail = trail.filter(p => p.x + trailSize > 0);
+
+  for (let i = 0; i < pillars.length; i++) {
+    pillars[i].x -= currentSpeed;
+    if (checkCollision(square, pillars[i])) {
+      gameOver = true;
+      clearInterval(scoreInterval);
+      clearInterval(pillarInterval);
+      cancelAnimationFrame(animationId);
+      setTimeout(() => startGame(currentSpeed), 500);
+      return;
+    }
+  }
+  while (pillars.length && pillars[0].x + pillarWidth < 0) pillars.shift();
+}
+
+function loop() {
+  update();
+  draw();
+  animationId = requestAnimationFrame(loop);
+}
+
+function startGame(speed) {
+  if (animationId) cancelAnimationFrame(animationId);
+  clearInterval(scoreInterval);
+  clearInterval(pillarInterval);
+
+  currentSpeed = speed;
+  startScreen.style.display = "none";
+
+  square = { x: canvas.width/2 - 200, y: canvas.height/2, width: waveWidth, height: waveHeight, speed: 14 };
+  trail = [];
+  pillars = [];
+  gameOver = false;
+  score = 0;
+
+  generatePillar();
+  pillarInterval = setInterval(generatePillar, 1000);
+  scoreInterval = setInterval(() => { if (!gameOver) score += 100; }, 1000);
+
+  currentAngle = angleDown;
+  targetAngle = angleDown;
+
+  loop();
+}
+
+easyButton.addEventListener("click", () => startGame(10));
+normalButton.addEventListener("click", () => startGame(15));
+hardButton.addEventListener("click", () => startGame(20));
+harderButton.addEventListener("click", () => startGame(25));
+insaneButton.addEventListener("click", () => startGame(30));
+</script>
 </body>
 </html>
